@@ -102,7 +102,7 @@ class SignupSerializer(serializers.Serializer):
         subject = "Your Verification Code"
         message = f"""Dear User,
 
-Thank you for registering with Dalil – Your Smart AI Travel Guide.
+Thank you for registering with SmartStudy Ai app.
 
 Your One-Time Password (OTP) for email verification is:
 
@@ -110,7 +110,7 @@ Your One-Time Password (OTP) for email verification is:
 
 This code is valid for 10 minutes. Please do not share it with anyone for security reasons.
 
-If you did not create an account with Dalil, please ignore this email or contact our support team immediately.
+If you did not create an account , please ignore this email or contact our support team immediately.
 
 Best regards,
 The Smart Study App Team,
