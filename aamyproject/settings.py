@@ -147,9 +147,10 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8017').split(',')
 CORS_ALLOW_ALL_ORIGINS = True#allowing all the different origins 
 CORS_ALLOW_CREDENTIALS = True
@@ -218,12 +219,6 @@ SIMPLE_JWT : Dict[str, Any] = {
 }
 
 AUTH_USER_MODEL = 'authapp.User'
-
-CSRF_TRUSTED_ORIGINS = [
-        'https://6zpmb4x8-8025.inc1.devtunnels.ms/',
-        "http://localhost:8025",
-]
-
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')

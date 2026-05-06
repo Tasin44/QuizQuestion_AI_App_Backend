@@ -106,8 +106,11 @@ def call_chat_ai(subject: str, history: list, user_message: str,model_choice: st
     # '''
     elif model_choice == "claude":
         api_key = os.getenv("CLAUDE_API_KEY")
-        print(f"Claude ai api key: {api_key}")
 
+        print("===== DEBUG CLAUDE =====")
+        print("CLAUDE KEY:", api_key)
+        print("TYPE:", type(api_key))
+        print("========================")
         if not api_key:
             raise ValueError(
                 "AI service is not configured. "
@@ -123,24 +126,35 @@ def call_chat_ai(subject: str, history: list, user_message: str,model_choice: st
             if msg["role"] in ["user", "assistant"]:
                 claude_messages.append({
                     "role": msg["role"],
-                    "content": msg["content"]
+                    "content": [{"type": "text", "text": msg["content"]}]
                 })
 
         # add latest user message
         claude_messages.append({
             "role": "user",
-            "content": user_message
+            #"content": user_message
+            "content": [{"type": "text", "text": user_message}]
         })
 
         response = httpx.post(
             url,
             headers={
                 "x-api-key": api_key,
+                # "anthropic-version": "2023-06-01",
+                #"anthropic-version": "2024-06-01",
                 "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json"
             },
             json={
-                "model": "claude-2.1",
+                # "model": "claude-3-haiku-20240307",
+                #"model": "claude-3-5-sonnet-latest",
+                # "model": "claude-3-haiku-latest",
+                # "model": "claude-3-sonnet-20240229",
+                # "model": "claude-3-haiku-20240307",
+                # "model": "claude-3-5-haiku-latest",
+                # "model":"claude-3-5-haiku-20241022",
+                # "model": "claude-2.1",
+                "model": "claude-sonnet-4-5-20250929",
                 "max_tokens": 1500,
                 "system": system_prompt,
                 "messages": claude_messages
