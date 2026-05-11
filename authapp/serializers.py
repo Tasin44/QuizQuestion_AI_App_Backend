@@ -102,7 +102,7 @@ class SignupSerializer(serializers.Serializer):
         subject = "Your Verification Code"
         message = f"""Dear User,
 
-Thank you for registering with SmartStudy Ai app.
+Thank you for registering with Quiz Question AI app.
 
 Your One-Time Password (OTP) for email verification is:
 
@@ -113,7 +113,7 @@ This code is valid for 10 minutes. Please do not share it with anyone for securi
 If you did not create an account , please ignore this email or contact our support team immediately.
 
 Best regards,
-The Smart Study App Team,
+The Quiz Question AI App Team,
 support@smartstudy.com"""
         send_mail(subject, message, 'noreply@yourdomain.com', [email])
 
