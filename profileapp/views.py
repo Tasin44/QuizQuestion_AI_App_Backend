@@ -28,7 +28,12 @@ class ProfileSetupView(StandardResponseMixin, APIView):
         # get_or_create avoids duplicate profiles if called twice
         profile, created = UserProfile.objects.get_or_create(user=request.user)
  
-        serializer = ProfileSetupSerializer(profile, data=request.data, partial=True)#❓❓❓ why partial true
+        serializer = ProfileSetupSerializer(
+            profile,
+            data=request.data,
+            partial=True,
+            context={'request': request}
+        )#❓❓❓ why partial true
         if serializer.is_valid():
             serializer.save()#❓❓❓ why?
             return self.success_response(
@@ -70,14 +75,48 @@ class ProfileView(StandardResponseMixin, APIView):
             serializer.data,
             message="Profile fetched successfully."
         )
- 
+    
+    '''
     def patch(self, request):
         profile = self._get_profile(request.user)
+        image_file = request.FILES.get('image')
+        data = request.data.copy()
+        if 'image' in data and not image_file:
+            data.pop('image')
         # partial=True allows updating only the provided fields
-        serializer = ProfileEditSerializer(profile, data=request.data, partial=True)
+        serializer = ProfileEditSerializer(profile, data=data, partial=True)
+        if serializer.is_valid():
+            if image_file:
+                serializer.save(image=image_file)
+            else:
+                serializer.save()
+            profile.refresh_from_db()
+            # Return full profile after update
+            read_serializer = ProfileReadSerializer(profile, context={'request': request})
+            return self.success_response(
+                read_serializer.data,
+                message="Profile updated successfully."
+            )
+        reason = extract_first_error(serializer.errors)
+        return self.error_response(
+            f"Profile update failed: {reason}",
+            status_code=400,
+            data=serializer.errors
+        )
+    '''
+    def patch(self, request):
+        profile = self._get_profile(request.user)
+        
+        data = request.data.copy()
+        
+        # Merge FILES into data so the serializer sees the image
+        if 'image' in request.FILES:
+            data['image'] = request.FILES['image']
+
+        serializer = ProfileEditSerializer(profile, data=data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            # Return full profile after update
+            profile.refresh_from_db()
             read_serializer = ProfileReadSerializer(profile, context={'request': request})
             return self.success_response(
                 read_serializer.data,

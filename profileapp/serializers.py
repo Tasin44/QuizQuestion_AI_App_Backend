@@ -8,9 +8,17 @@ class ProfileSetupSerializer(serializers.ModelSerializer):
     Accepts: name, image, description
     """
  
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = UserProfile
-        fields = ['name', 'image', 'description']
+        fields = ['name', 'image', 'image_url', 'description']
+
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image and request:
+            return request.build_absolute_uri(obj.image.url)
+        return None
  
     def validate_name(self, value): 
         '''
