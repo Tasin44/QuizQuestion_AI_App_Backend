@@ -34,10 +34,17 @@ class ScanHistory(models.Model):
     )
  
     # Subject filter chosen by user
-    subject = models.CharField(max_length=50, choices=SUBJECT_CHOICES, db_index=True)
+    subject = models.CharField(max_length=50, choices=SUBJECT_CHOICES,null=True,blank=True,default='general', db_index=True)
  
     # Uploaded image stored in media/scans/<user_id>/
-    image = models.ImageField(upload_to='scans/')
+    image = models.ImageField(upload_to='scans/images/',blank=True,null=True)
+
+    # optional document
+    file = models.FileField(
+        upload_to='scans/files/',
+        blank=True,
+        null=True
+    )
  
     # Optional extra question the user typed along with the image
     question = models.TextField(blank=True, default='')

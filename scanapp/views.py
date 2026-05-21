@@ -12,70 +12,183 @@ from .models import ScanHistory,SUBJECT_CHOICES
 from authapp.models import User
 from profileapp.models import UserProfile
 
-def call_vision_ai(image_file, subject: str, question: str) -> str:
-    """
-    Sends image + subject + question to OpenAI Vision API (or compatible).
-    API key loaded from environment — never hardcoded.
-    Returns AI text response or raises ValueError on failure.
-    """
-    api_key = os.getenv('OPENAI_API_KEY')#❓❓❓user will be able to change ai modle so I've to change here 
-    if not api_key:
-        raise ValueError(
-            "AI service is not configured. "
-            "Please ask the administrator to set OPENAI_API_KEY."
-        )
-    #❓❓❓explain this 4 below line
-    # Read and base64-encode the image for the API
-    image_data = base64.b64encode(image_file.read()).decode('utf-8')
-    image_file.seek(0)  # reset file pointer so Django can save it after
+# def call_vision_ai(image_file, subject: str, question: str) -> str:
+#     """
+#     Sends image + subject + question to OpenAI Vision API (or compatible).
+#     API key loaded from environment — never hardcoded.
+#     Returns AI text response or raises ValueError on failure.
+#     """
+#     api_key = os.getenv('OPENAI_API_KEY')#❓❓❓user will be able to change ai modle so I've to change here 
+#     if not api_key:
+#         raise ValueError(
+#             "AI service is not configured. "
+#             "Please ask the administrator to set OPENAI_API_KEY."
+#         )
+#     #❓❓❓explain this 4 below line
+#     # Read and base64-encode the image for the API
+#     image_data = base64.b64encode(image_file.read()).decode('utf-8')
+#     image_file.seek(0)  # reset file pointer so Django can save it after
  
-    # Determine MIME type from file name
-    ext = image_file.name.rsplit('.', 1)[-1].lower()
-    mime = f"image/{ext}" if ext in ('png', 'jpg', 'jpeg', 'gif', 'webp') else "image/jpeg"
+#     # Determine MIME type from file name
+#     ext = image_file.name.rsplit('.', 1)[-1].lower()
+#     mime = f"image/{ext}" if ext in ('png', 'jpg', 'jpeg', 'gif', 'webp') else "image/jpeg"
  
-    # Craft system prompt based on subject filter
-    system_prompt = (
-        f"You are an expert {subject} tutor. "
-        f"Analyze the provided image and answer any questions clearly and step by step. "
-        f"Focus only on {subject}-related content."
-    )
+#     # Craft system prompt based on subject filter
+#     system_prompt = (
+#         f"You are an expert {subject} tutor. "
+#         f"Analyze the provided image and answer any questions clearly and step by step. "
+#         f"Focus only on {subject}-related content."
+#     )
  
-    user_message = question.strip() if question else f"Please explain this {subject} problem."
+#     user_message = question.strip() if question else f"Please explain this {subject} problem."
  
-    payload = {
-        "model": "gpt-4o",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": user_message},
+#     payload = {
+#         "model": "gpt-4o",
+#         "messages": [
+#             {"role": "system", "content": system_prompt},
+#             {
+#                 "role": "user",
+#                 "content": [
+#                     {"type": "text", "text": user_message},
+#                     {
+#                         "type": "image_url",
+#                         "image_url": {"url": f"data:{mime};base64,{image_data}"}
+#                     }
+#                 ]
+#             }
+#         ],
+#         "max_tokens": 1500
+#     }
+ 
+#     # Synchronous HTTP call — for production, move to Celery background task
+#     response = httpx.post(
+#         "https://api.openai.com/v1/chat/completions",
+#         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+#         json=payload,
+#         timeout=60.0
+#     )
+ 
+#     if response.status_code != 200:
+#         raise ValueError(
+#             f"AI service returned an error (status {response.status_code}). "
+#             "Please try again later."
+#         )
+ 
+#     data = response.json()
+#     return data['choices'][0]['message']['content']
+
+import fitz  # PyMuPDF (for PDF)
+from docx import Document
+
+
+def extract_text_from_pdf(file_obj):
+    file_bytes = file_obj.read()
+    file_obj.seek(0)
+
+    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    return "\n".join(page.get_text() for page in doc)
+
+
+def extract_text_from_docx(file_obj):
+    file_obj.seek(0)
+    doc = Document(file_obj)
+    return "\n".join(p.text for p in doc.paragraphs)
+
+
+def call_ai(file_obj, subject: str, question: str, model="gpt-4o"):
+    try:
+        file_obj.seek(0)
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY not set")
+
+        ext = file_obj.name.rsplit(".", 1)[-1].lower()
+
+        # ================= IMAGE =================
+        if ext in ["png", "jpg", "jpeg", "webp", "gif"]:
+            file_obj.seek(0)
+            image_data = base64.b64encode(file_obj.read()).decode("utf-8")
+
+            mime = f"image/{ext}"
+
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": f"You are an expert {subject} tutor."},
                     {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime};base64,{image_data}"}
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": question or f"Explain this {subject} problem."},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:{mime};base64,{image_data}"}
+                            }
+                        ]
                     }
-                ]
+                ],
+                "max_tokens": 1500
             }
-        ],
-        "max_tokens": 1500
-    }
- 
-    # Synchronous HTTP call — for production, move to Celery background task
-    response = httpx.post(
-        "https://api.openai.com/v1/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=60.0
-    )
- 
-    if response.status_code != 200:
-        raise ValueError(
-            f"AI service returned an error (status {response.status_code}). "
-            "Please try again later."
+
+        # ================= PDF =================
+        elif ext == "pdf":
+            try:
+                file_bytes = file_obj.read()
+                file_obj.seek(0)
+
+                doc = fitz.open(stream=file_bytes, filetype="pdf")
+                text = "\n".join(page.get_text() for page in doc)
+            except Exception:
+                raise ValueError("Invalid or corrupted PDF file")
+
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": f"You are an expert {subject} tutor."},
+                    {"role": "user", "content": f"{text}\n\nQuestion: {question}"}
+                ],
+                "max_tokens": 1500
+            }
+
+        # ================= DOCX =================
+        elif ext == "docx":
+            try:
+                file_obj.seek(0)
+                doc = Document(file_obj)
+                text = "\n".join(p.text for p in doc.paragraphs)
+            except Exception:
+                raise ValueError("Invalid DOCX file")
+
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": f"You are an expert {subject} tutor."},
+                    {"role": "user", "content": f"{text}\n\nQuestion: {question}"}
+                ],
+                "max_tokens": 1500
+            }
+
+        else:
+            raise ValueError("Unsupported file type")
+
+        response = httpx.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            json=payload,
+            timeout=60.0
         )
- 
-    data = response.json()
-    return data['choices'][0]['message']['content']
+
+        if response.status_code != 200:
+            raise ValueError(f"AI error: {response.text}")
+
+        return response.json()["choices"][0]["message"]["content"]
+
+    except Exception as e:
+        # IMPORTANT: convert ANY crash to controlled error
+        raise ValueError(str(e))
 
 
 #jekono view te atfirst, permision, perser class, then post method thakle sekhane serializer call with user requsted data, then serializer validation check, if valid then user data gula serailizer e pass kora, tarpor logic apply kora, then modle e save kora, tarpor success response dewa
@@ -99,8 +212,14 @@ class ScanView(StandardResponseMixin,APIView):
                 data=serializer.errors
             )
 
-        subject = serializer.validated_data['subject']
-        image=serializer.validated_data['image']
+        # subject = serializer.validated_data['subject']
+        #image=serializer.validated_data['image']
+        image = serializer.validated_data.get('image')   # None if not provided
+        file = serializer.validated_data.get('file')
+        uploaded_file = image or file
+
+        subject = serializer.validated_data.get('subject', 'general')
+        question = serializer.validated_data.get('question', '')
         #question = serializer.validated_data('question','')#❓❓❓ why here ()?
         '''
         validated_data is a dictionary, not a function.
@@ -111,11 +230,16 @@ class ScanView(StandardResponseMixin,APIView):
         TypeError: 'dict' object is not callable
         
         '''
-        question = serializer.validated_data.get('question', '')
+        # question = serializer.validated_data.get('question', '')
 
         # Call AI — catch any errors and return meaningful message
         try:
-            ai_response = call_vision_ai(image,subject,question)
+            #ai_response = call_vision_ai(image,subject,question)
+            ai_response = call_ai(
+                uploaded_file,
+                subject,
+                question
+            )
         except ValueError as e:
             return self.error_response(str(e),status_code=503)#❓❓❓ why 503 why not others?
         except Exception:
@@ -127,7 +251,8 @@ class ScanView(StandardResponseMixin,APIView):
         scan=ScanHistory.objects.create(#❓❓❓ whenever I wrote modelname.objects.create, do I've to pass all the requeried field on the model to save? 
             user=request.user,
             subject=subject,
-            image=image,
+            image=image if image else None,
+            file=file if file else None,
             question=question,
             ai_response=ai_response
         )
