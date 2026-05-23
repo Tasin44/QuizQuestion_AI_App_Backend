@@ -40,3 +40,4 @@ gunicorn
 whitenoise
 PyMuPDF
 python-docx
+django-allauth
