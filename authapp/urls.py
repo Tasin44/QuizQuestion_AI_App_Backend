@@ -11,6 +11,7 @@ from .new_views import (
     NewResetPasswordNoTokenView,
     NewVerifyOTPView,
 )
+from .social_views import GoogleLogin, FacebookLogin
 
 app_urlpatterns = [
     path('signup/', SignupView.as_view(), name='signup'),
@@ -20,6 +21,8 @@ app_urlpatterns = [
     path('logout/', LogoutView.as_view(), name='logout'),
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
+    path('social/google/', GoogleLogin.as_view(), name='google-login'),
+    path('social/facebook/', FacebookLogin.as_view(), name='facebook-login'),
 ]
 
 new_app_urlpatterns = [

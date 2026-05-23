@@ -142,22 +142,131 @@ class ParentalControlCreateView(StandardResponseMixin, APIView):
             reason = extract_first_error(serializer.errors)
             return self.error_response(f"Invalid request: {reason}", status_code=400, data=serializer.errors)
 
-        obj = serializer.save(user=request.user)
-        # Send email
-        relation = "parent" if obj.relation_type == "parent" else "child"
-        body = f"Hello, Greeting from Smart Study AI APP Team. The user {request.user.last_name or request.user.email} added you {obj.related_email} as a {relation}."
+        related_email = serializer.validated_data['related_email']
+        relation_type = serializer.validated_data['relation_type']
+
+        # Try to find the related user in the system
+        try:
+            related_user = User.objects.get(email=related_email, verified=True)
+        except User.DoesNotExist:
+            related_user = None
+
+        # Create the parental control record
+        obj = ParentalControl.objects.create(
+            user=request.user,
+            related_email=related_email,
+            related_user=related_user,
+            relation_type=relation_type,
+            # This user is a parent if they declared the related person as their child
+            is_parent=(relation_type == 'child')
+        )
+
+        # If current user declared someone as their parent:
+        # → mark that related user as is_parent=True on their own record (if they exist)
+        if relation_type == 'parent' and related_user:
+            # Mark all of related_user's parental control entries to reflect is_parent=True
+            # Also create/update the reverse record so related_user knows they are a parent
+            ParentalControl.objects.filter(user=related_user).update(is_parent=True)
+
+            # If no record exists for related_user yet, mark on their profile via a flag
+            # We store is_parent on UserProfile for easy access
+            from profileapp.models import UserProfile
+            UserProfile.objects.filter(user=related_user).update(is_parent=True)
+
+        # If current user declared someone as their child:
+        # → this user is now a parent, mark them
+        if relation_type == 'child':
+            from profileapp.models import UserProfile
+            UserProfile.objects.filter(user=request.user).update(is_parent=True)
+
+        # Send notification email
+        relation_label = "parent" if relation_type == "parent" else "child"
+        body = (
+            f"Hello, Greeting from Smart Study AI APP Team. "
+            f"The user {request.user.last_name or request.user.email} "
+            f"added you {related_email} as a {relation_label}."
+        )
         send_mail(
             subject="Parental Control Notification",
             message=body,
             from_email="noreply@studyapp.com",
-            recipient_list=[obj.related_email],
+            recipient_list=[related_email],
         )
+
         return self.success_response(
             {
                 "id": obj.id,
                 "related_email": obj.related_email,
                 "relation_type": obj.relation_type,
+                "is_parent": relation_type == 'child',  # current user is parent if they added a child
             },
             message="Parental control relation created and email sent.",
             status_code=201,
         )
+
+from scanapp.models import ScanHistory
+from scanapp.serializers import ScanHistorySerializer
+from chatapp.models import AskChatHistory
+from chatapp.serializers import AskHistorySerializer
+from .models import ParentalControl
+
+class ParentViewChildScansView(StandardResponseMixin, APIView):
+    """
+    GET /2fa/parental-control/child-scans/<child_email>/
+    Parent can view a child's scan history.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, child_email):
+        # Confirm request.user is actually a parent of child_email
+        is_parent = ParentalControl.objects.filter(
+            user=request.user,
+            related_email=child_email,
+            relation_type='child'   # current user added child_email as their child → user is parent
+        ).exists()
+
+        if not is_parent:
+            return self.error_response(
+                "You are not a parent of this user or the user does not exist.",
+                status_code=403
+            )
+
+        # Get the child user
+        try:
+            child_user = User.objects.get(email=child_email, verified=True)
+        except User.DoesNotExist:
+            return self.error_response("Child user not found.", status_code=404)
+
+        scans = ScanHistory.objects.filter(user=child_user)
+        serializer = ScanHistorySerializer(scans, many=True, context={'request': request})
+        return self.success_response(serializer.data, message="Child scan history fetched.")
+
+
+class ParentViewChildChatsView(StandardResponseMixin, APIView):
+    """
+    GET /2fa/parental-control/child-chats/<child_email>/
+    Parent can view a child's ask/chat history.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, child_email):
+        is_parent = ParentalControl.objects.filter(
+            user=request.user,
+            related_email=child_email,
+            relation_type='child'
+        ).exists()
+
+        if not is_parent:
+            return self.error_response(
+                "You are not a parent of this user or the user does not exist.",
+                status_code=403
+            )
+
+        try:
+            child_user = User.objects.get(email=child_email, verified=True)
+        except User.DoesNotExist:
+            return self.error_response("Child user not found.", status_code=404)
+
+        chats = AskChatHistory.objects.filter(user=child_user)
+        serializer = AskHistorySerializer(chats, many=True, context={'request': request})
+        return self.success_response(serializer.data, message="Child chat history fetched.")

@@ -9,6 +9,8 @@ from rest_framework.permissions import IsAuthenticated
 from .serializers import SendMessageSerializer,StartChatSerializer,ChatSessionSerializer,ChatMessageSerializer,AskAIMessageSerializer,AskHistorySerializer
 from .models import ChatSession,ChatMessage,AskChatHistory
 from profileapp.models import UserProfile
+from scanapp.views import call_ai   # reuse working scan logic
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 #❓❓❓ why httpx used
 def call_chat_ai(subject: str, history: list, user_message: str,model_choice: str) -> str:#❓❓❓ what does they mean: subject:str,history:list,user_message:str
@@ -394,11 +396,12 @@ class ChatSessionListView(StandardResponseMixin, APIView):
 
 class AskAPIView(StandardResponseMixin, APIView):
     """
-    POST /chat/ask/   -> ask + save prompt/response
-    GET /chat/ask/    -> list all ask history of logged in user
+    POST /chat/ask/   -> ask + save prompt/response (message/model optional, supports image/file)
+    GET  /chat/ask/   -> list all ask history of logged in user
     DELETE /chat/ask/ -> delete all ask history of logged in user
     """
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]  # support file uploads
 
     def post(self, request):
         serializer = AskAIMessageSerializer(data=request.data)
@@ -407,48 +410,65 @@ class AskAPIView(StandardResponseMixin, APIView):
             reason = extract_first_error(serializer.errors)
             return self.error_response(f"Invalid request: {reason}", status_code=400)
 
-        user_text = serializer.validated_data['message']
-        # subject = serializer.validated_data['subject']
+        user_text = serializer.validated_data.get('message', '').strip()
         subject = serializer.validated_data.get('subject', None)
-        model_choice = serializer.validated_data.get('model', 'gpt')
+        model_choice = serializer.validated_data.get('model', 'gpt')   # default GPT
+        image = serializer.validated_data.get('image')
+        file = serializer.validated_data.get('file')
 
-        # ❌ No history (stateless)
-        history = []
+        ai_reply = None
 
-        try:
-            # ai_reply = call_chat_ai(subject, history, user_text, model_choice)
-            ai_reply = call_chat_ai(subject,history, user_text, model_choice)
-        except Exception as e:
-            print("ERROR:", str(e)) 
-            return self.error_response(
-                "AI service unavailable",
-                status_code=503
-            )
+        # If image or file provided — use call_ai() from scanapp (already working)
+        if image or file:
+            uploaded_file = image or file
+            question = user_text or f"Explain this {subject or 'content'}."
+            try:
+                ai_reply = call_ai(
+                    uploaded_file,
+                    subject or 'general',
+                    question,
+                    model="gpt-4o"   # call_ai uses OpenAI vision; model_choice for text handled below
+                )
+            except ValueError as e:
+                return self.error_response(str(e), status_code=503)
+            except Exception as e:
+                print("ERROR:", str(e))
+                return self.error_response("AI service unavailable", status_code=503)
+
+        # If only text — use call_chat_ai() as before
+        else:
+            history = []
+            try:
+                ai_reply = call_chat_ai(subject, history, user_text, model_choice)
+            except Exception as e:
+                print("ERROR:", str(e))
+                return self.error_response("AI service unavailable", status_code=503)
+
         AskChatHistory.objects.create(
             user=request.user,
             prompt=user_text,
-            ai_response=ai_reply
+            ai_response=ai_reply,
+            image=image if image else None,
+            file=file if file else None,
         )
+
         return self.success_response(
             {"role": "assistant", "content": ai_reply},
             message="AI response generated",
             status_code=200
         )
-    
+
     def get(self, request):
         qs = AskChatHistory.objects.filter(user=request.user)
-        serializer = AskHistorySerializer(qs, many=True)
+        serializer = AskHistorySerializer(qs, many=True, context={'request': request})  # ADD context
         return self.success_response(serializer.data, message="Ask history fetched.")
 
     def delete(self, request):
-        deleted_count, _ = AskChatHistory.objects.filter(user=request.user).delete()#❓❓❓ why _ used?
+        deleted_count, _ = AskChatHistory.objects.filter(user=request.user).delete()
         return self.success_response(
             {"deleted_count": deleted_count},
             message="All ask history deleted successfully."
         )
-
-
-
 
 
 

@@ -319,7 +319,12 @@ class ScanHistoryView(StandardResponseMixin, APIView):
             message="Scan history fetched successfully."
         )
 
-
+    def delete(self, request):
+        deleted_count, _ = ScanHistory.objects.filter(user=request.user).delete()
+        return self.success_response(
+            {"deleted_count": deleted_count},
+            message="All scan history deleted successfully."
+        )
 
 
 

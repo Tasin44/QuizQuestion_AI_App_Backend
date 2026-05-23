@@ -67,8 +67,10 @@ class AskChatHistory(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ask_histories', db_index=True)
     # subject = models.CharField(max_length=50, choices=SUBJECT_CHOICES, null=True, blank=True)
     # model = models.CharField(max_length=20, default='gpt')
-    prompt = models.TextField()
+    prompt = models.TextField(blank=True, default='')
     ai_response = models.TextField()
+    image = models.ImageField(upload_to='ask/images/', blank=True, null=True)   
+    file = models.FileField(upload_to='ask/files/', blank=True, null=True)      
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

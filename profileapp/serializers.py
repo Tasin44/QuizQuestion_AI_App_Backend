@@ -12,7 +12,7 @@ class ProfileSetupSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserProfile
-        fields = ['name', 'image', 'image_url', 'description']
+        fields = ['name', 'image', 'image_url', 'description','birth_date']
 
     def get_image_url(self, obj):
         request = self.context.get('request')
@@ -45,12 +45,13 @@ class ProfileEditSerializer(serializers.ModelSerializer):
  
     class Meta:
         model = UserProfile
-        fields = ['name', 'image', 'description']
+        fields = ['name', 'image', 'description', 'birth_date']
         #❓❓❓How does this extra_kwargs works actually, is it changing the model filed required?
         extra_kwargs = {
             'name': {'required': False},
             'image': {'required': False},
             'description': {'required': False},
+            'birth_date': {'required': False},
         }
  
     def validate_name(self, value):
@@ -75,7 +76,7 @@ class ProfileReadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'name', 'image_url', 'description',
             'problems_solved', 'study_minutes', 'active_days',
-            'two_factor_enabled', 'badges', 'level',
+            'two_factor_enabled', 'badges', 'level','birth_date',
             'created_at', 'updated_at',
         ]
  

@@ -35,6 +35,8 @@ class UserProfile(models.Model):
     # Study duration in minutes — frontend sends this periodically via PATCH
     study_minutes = models.PositiveIntegerField(default=0)
  
+    birth_date = models.DateField(null=True, blank=True)
+
     # Number of calendar days the user has been active (frontend increments daily)
     active_days = models.PositiveIntegerField(default=0)
 
@@ -43,6 +45,8 @@ class UserProfile(models.Model):
  
     # Two-factor auth toggle — set True after OTP verification in 2FA flow
     two_factor_enabled = models.BooleanField(default=False)
+
+    is_parent = models.BooleanField(default=False)
     two_factor_verified_at = models.DateTimeField(null=True, blank=True)
  
     created_at = models.DateTimeField(auto_now_add=True)
