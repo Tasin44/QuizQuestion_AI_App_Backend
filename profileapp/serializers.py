@@ -76,7 +76,7 @@ class ProfileReadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'name', 'image_url', 'description',
             'problems_solved', 'study_minutes', 'active_days',
-            'two_factor_enabled', 'badges', 'level','birth_date',
+            'two_factor_enabled', 'badges', 'level','birth_date','is_parent',
             'created_at', 'updated_at',
         ]
  

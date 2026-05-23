@@ -10,6 +10,11 @@ class ParentalControl(models.Model):
         ('parent', 'Parent'),
         ('child', 'Child'),
     ]
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('accepted', 'Accepted'),
+        ('rejected', 'Rejected'),
+    ]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='parental_controls')
     related_email = models.EmailField()
     related_user = models.ForeignKey(          # ADD: link to actual User if they exist
@@ -21,6 +26,7 @@ class ParentalControl(models.Model):
     )
     relation_type = models.CharField(max_length=10, choices=RELATION_CHOICES)
     is_parent = models.BooleanField(default=False)   # ADD: True if THIS user is a parent of someone
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending') 
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

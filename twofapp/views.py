@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from django.contrib.auth import get_user_model
 from coreapp.mixins import StandardResponseMixin,extract_first_error
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -12,6 +13,8 @@ import string
 from django.utils import timezone
 from datetime import timedelta
 from .models import ParentalControl
+
+User = get_user_model() # User is referenced in the parental-control views but never defined. I added get_user_model() and bound User so those queries resolve.
 # Create your views here.
 
 class TwoFASendOTPView(StandardResponseMixin, APIView):
@@ -145,49 +148,55 @@ class ParentalControlCreateView(StandardResponseMixin, APIView):
         related_email = serializer.validated_data['related_email']
         relation_type = serializer.validated_data['relation_type']
 
-        # Try to find the related user in the system
+        # SELF-ADD CHECK
+        if related_email.lower() == request.user.email.lower():
+            return self.error_response(
+                "You cannot add yourself as a parent or child.",
+                status_code=400
+            )
+
+        # DUPLICATE CHECK
+        already_exists = ParentalControl.objects.filter(
+            user=request.user,
+            related_email=related_email,
+            relation_type=relation_type
+        ).exists()
+        if already_exists:
+            return self.error_response(
+                "This relation already exists.",
+                status_code=400
+            )
+
         try:
             related_user = User.objects.get(email=related_email, verified=True)
         except User.DoesNotExist:
             related_user = None
 
-        # Create the parental control record
+        # Create with status=pending
         obj = ParentalControl.objects.create(
             user=request.user,
             related_email=related_email,
             related_user=related_user,
             relation_type=relation_type,
-            # This user is a parent if they declared the related person as their child
-            is_parent=(relation_type == 'child')
+            is_parent=(relation_type == 'child'),
+            status='pending'     # always pending until accepted
         )
 
-        # If current user declared someone as their parent:
-        # → mark that related user as is_parent=True on their own record (if they exist)
-        if relation_type == 'parent' and related_user:
-            # Mark all of related_user's parental control entries to reflect is_parent=True
-            # Also create/update the reverse record so related_user knows they are a parent
-            ParentalControl.objects.filter(user=related_user).update(is_parent=True)
+        # Build accept/reject links
+        accept_url = f"https://api.quizquestion.ai/2fa/parental-control/accept/{obj.id}/"
+        reject_url = f"https://api.quizquestion.ai/2fa/parental-control/reject/{obj.id}/"
 
-            # If no record exists for related_user yet, mark on their profile via a flag
-            # We store is_parent on UserProfile for easy access
-            from profileapp.models import UserProfile
-            UserProfile.objects.filter(user=related_user).update(is_parent=True)
-
-        # If current user declared someone as their child:
-        # → this user is now a parent, mark them
-        if relation_type == 'child':
-            from profileapp.models import UserProfile
-            UserProfile.objects.filter(user=request.user).update(is_parent=True)
-
-        # Send notification email
         relation_label = "parent" if relation_type == "parent" else "child"
         body = (
-            f"Hello, Greeting from Smart Study AI APP Team. "
-            f"The user {request.user.last_name or request.user.email} "
-            f"added you {related_email} as a {relation_label}."
+            f"Hello,\n\n"
+            f"Greeting from Quiz Question AI APP Team.\n"
+            f"The user {request.user.email} wants to add you as their {relation_label}.\n\n"
+            f"Click ACCEPT to confirm:\n{accept_url}\n\n"
+            f"Click REJECT to decline:\n{reject_url}\n\n"
+            f"If you did not expect this, please ignore this email."
         )
         send_mail(
-            subject="Parental Control Notification",
+            subject="Parental Control Request",
             message=body,
             from_email="noreply@studyapp.com",
             recipient_list=[related_email],
@@ -198,9 +207,9 @@ class ParentalControlCreateView(StandardResponseMixin, APIView):
                 "id": obj.id,
                 "related_email": obj.related_email,
                 "relation_type": obj.relation_type,
-                "is_parent": relation_type == 'child',  # current user is parent if they added a child
+                "status": obj.status,
             },
-            message="Parental control relation created and email sent.",
+            message="Request sent. The person must accept via the email link.",
             status_code=201,
         )
 
@@ -211,62 +220,119 @@ from chatapp.serializers import AskHistorySerializer
 from .models import ParentalControl
 
 class ParentViewChildScansView(StandardResponseMixin, APIView):
-    """
-    GET /2fa/parental-control/child-scans/<child_email>/
-    Parent can view a child's scan history.
-    """
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, child_email):
-        # Confirm request.user is actually a parent of child_email
-        is_parent = ParentalControl.objects.filter(
-            user=request.user,
-            related_email=child_email,
-            relation_type='child'   # current user added child_email as their child → user is parent
-        ).exists()
+    def get(self, request):
+        # Find all users who added request.user as their parent (accepted only)
+        child_relations = ParentalControl.objects.filter(
+            related_email=request.user.email,
+            relation_type='parent',
+            status='accepted'
+        )
 
-        if not is_parent:
-            return self.error_response(
-                "You are not a parent of this user or the user does not exist.",
-                status_code=403
-            )
+        if not child_relations.exists():
+            return self.error_response("You have no children added.", status_code=404)
 
-        # Get the child user
-        try:
-            child_user = User.objects.get(email=child_email, verified=True)
-        except User.DoesNotExist:
-            return self.error_response("Child user not found.", status_code=404)
+        result = {}
+        for relation in child_relations:
+            child_email = relation.user.email
+            scans = ScanHistory.objects.filter(user=relation.user)
+            serializer = ScanHistorySerializer(scans, many=True, context={'request': request})
+            result[child_email] = serializer.data
 
-        scans = ScanHistory.objects.filter(user=child_user)
-        serializer = ScanHistorySerializer(scans, many=True, context={'request': request})
-        return self.success_response(serializer.data, message="Child scan history fetched.")
+        return self.success_response(result, message="Children scan history fetched.")
 
 
 class ParentViewChildChatsView(StandardResponseMixin, APIView):
-    """
-    GET /2fa/parental-control/child-chats/<child_email>/
-    Parent can view a child's ask/chat history.
-    """
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, child_email):
-        is_parent = ParentalControl.objects.filter(
-            user=request.user,
-            related_email=child_email,
-            relation_type='child'
-        ).exists()
+    def get(self, request):
+        child_relations = ParentalControl.objects.filter(
+            related_email=request.user.email,
+            relation_type='parent',
+            status='accepted'
+        )
 
-        if not is_parent:
-            return self.error_response(
-                "You are not a parent of this user or the user does not exist.",
-                status_code=403
+        if not child_relations.exists():
+            return self.error_response("You have no children added.", status_code=404)
+
+        result = {}
+        for relation in child_relations:
+            child_email = relation.user.email
+            chats = AskChatHistory.objects.filter(user=relation.user)
+            serializer = AskHistorySerializer(chats, many=True, context={'request': request})
+            result[child_email] = serializer.data
+
+        return self.success_response(result, message="Children chat history fetched.")
+
+from rest_framework.permissions import AllowAny
+
+class ParentalControlAcceptView(StandardResponseMixin, APIView):
+    """
+    GET /2fa/parental-control/accept/<obj_id>/
+    Called when the related person clicks accept link in email.
+    No auth required — link is public like email verification.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, obj_id):
+        try:
+            obj = ParentalControl.objects.get(id=obj_id, status='pending')
+        except ParentalControl.DoesNotExist:
+            return render(
+                request,
+                "parental_control_accept.html",
+                {"status": "error", "message": "Invalid or already processed request."},
+                status=404,
             )
 
-        try:
-            child_user = User.objects.get(email=child_email, verified=True)
-        except User.DoesNotExist:
-            return self.error_response("Child user not found.", status_code=404)
+        obj.status = 'accepted'
+        obj.save(update_fields=['status'])
 
-        chats = AskChatHistory.objects.filter(user=child_user)
-        serializer = AskHistorySerializer(chats, many=True, context={'request': request})
-        return self.success_response(serializer.data, message="Child chat history fetched.")
+        # Now apply is_parent logic ONLY after acceptance
+        if obj.relation_type == 'child':
+            # obj.user added someone as child → obj.user is parent
+            from profileapp.models import UserProfile
+            UserProfile.objects.filter(user=obj.user).update(is_parent=True)
+
+        if obj.relation_type == 'parent' and obj.related_user:
+            # related_user is the parent → mark them
+            from profileapp.models import UserProfile
+            UserProfile.objects.filter(user=obj.related_user).update(is_parent=True)
+
+        return render(
+            request,
+            "parental_control_accept.html",
+            {
+                "status": "accepted",
+                "message": "Parental control relation accepted successfully.",
+            },
+        )
+
+
+class ParentalControlRejectView(StandardResponseMixin, APIView):
+    """
+    GET /2fa/parental-control/reject/<obj_id>/
+    Called when the related person clicks reject link in email.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, obj_id):
+        try:
+            obj = ParentalControl.objects.get(id=obj_id, status='pending')
+        except ParentalControl.DoesNotExist:
+            return render(
+                request,
+                "parental_control_reject.html",
+                {"status": "error", "message": "Invalid or already processed request."},
+                status=404,
+            )
+
+        obj.status = 'rejected'
+        obj.save(update_fields=['status'])
+
+        return render(
+            request,
+            "parental_control_reject.html",
+            {"status": "rejected", "message": "Parental control relation rejected."},
+        )
