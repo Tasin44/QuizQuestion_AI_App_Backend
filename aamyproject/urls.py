@@ -18,9 +18,18 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import TemplateView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # After browser-based Google login, allauth redirects to LOGIN_REDIRECT_URL which defaults to /accounts/profile/.
+    # Provide a simple success page there.
+    path('accounts/profile/', TemplateView.as_view(template_name='account/profile.html'), name='account_profile'),
+
+    # django-allauth (browser-based OAuth redirect endpoints)
+    path('accounts/', include('allauth.urls')),
+
     path('adminapp/', include('adminapp.urls')),
     path('auth/', include('authapp.urls')),
     path('chat/', include('chatapp.urls')),

@@ -11,7 +11,7 @@ from .new_views import (
     NewResetPasswordNoTokenView,
     NewVerifyOTPView,
 )
-from .social_views import GoogleLogin, FacebookLogin
+from .social_views import GoogleLogin, FacebookLogin,GoogleLoginRedirectView
 
 app_urlpatterns = [
     path('signup/', SignupView.as_view(), name='signup'),
@@ -23,6 +23,7 @@ app_urlpatterns = [
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
     path('social/google/', GoogleLogin.as_view(), name='google-login'),
     path('social/facebook/', FacebookLogin.as_view(), name='facebook-login'),
+    path('google/login/redirect/', GoogleLoginRedirectView.as_view(), name='google_login_redirect'),
 ]
 
 new_app_urlpatterns = [

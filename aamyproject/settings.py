@@ -42,6 +42,8 @@ ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', 'localhost'
 
 
 # Application definition
+SOCIALACCOUNT_LOGIN_ON_GET = True #This tells django-allauth to skip the "Continue" confirmation page and directly redirect to Google when someone visits /accounts/google/login/.
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -50,9 +52,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
     'rest_framework',
+    'corsheaders',
+    'django_filters',
     'drf_yasg',
-    'authapp',
+
+    'authapp.apps.AuthappConfig',
     'profileapp',
     'coreapp',
     'chatapp',
@@ -60,19 +66,35 @@ INSTALLED_APPS = [
     'libraryapp',
     'twofapp',
     'adminapp',
+
     'django.contrib.sites',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
     'allauth.socialaccount.providers.facebook',
+
     'rest_framework.authtoken',
     'dj_rest_auth',
     'dj_rest_auth.registration',
     'rest_framework_simplejwt.token_blacklist',
 
 ]
-SITE_ID = 1
+# IMPORTANT:
+# Django-allauth uses the Sites framework to select the correct SocialApp.
+# Your database currently has Site(id=3, domain=api.quizquestion.ai), so we default SITE_ID to 3.
+# You can still override this via the SITE_ID environment variable.
+SITE_ID = int(os.getenv('SITE_ID', '3'))
+
+# Optional helpers (used by our Site bootstrap migration if you ever run it on a fresh DB)
+SITE_DOMAIN = os.getenv('SITE_DOMAIN', (ALLOWED_HOSTS[0] if ALLOWED_HOSTS else 'localhost'))
+SITE_NAME = os.getenv('SITE_NAME', SITE_DOMAIN)
+
+# Required for django-allauth (including social login)
+AUTHENTICATION_BACKENDS = (
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+)
 
 REST_USE_JWT = True   # Important for returning JWT tokens
 
@@ -93,14 +115,18 @@ SOCIALACCOUNT_PROVIDERS = {
 }
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
+
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'allauth.account.middleware.AccountMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+
+    # Must be AFTER AuthenticationMiddleware (django-allauth requirement)
+    'allauth.account.middleware.AccountMiddleware',
+
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
