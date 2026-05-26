@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser,FormParser,JSONParser
 from .serializers import ScanHistorySerializer,ScanRequestSerializer, AiPersonalizationSerializer
-from .models import ScanHistory,SUBJECT_CHOICES
+from .models import ScanHistory,SUBJECT_CHOICES, AiPersonalization
 from authapp.models import User
 from profileapp.models import UserProfile
 
@@ -336,6 +336,18 @@ class SaveScanToLibraryView(StandardResponseMixin, APIView):
 class AiPersonalizationCreateView(StandardResponseMixin, APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser]
+
+    def get(self, request):
+        qs = AiPersonalization.objects.filter(user=request.user)
+        serializer = AiPersonalizationSerializer(qs, many=True)
+        return self.success_response(
+            {
+                "items": serializer.data,
+                "count": qs.count(),
+            },
+            message="AI personalization fetched successfully.",
+            status_code=200,
+        )
 
     def post(self, request):
         serializer = AiPersonalizationSerializer(data=request.data)

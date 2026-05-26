@@ -114,6 +114,16 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
+# Allow social login redirects back to frontend domains via ?next=...
+ACCOUNT_ALLOWED_REDIRECT_HOSTS = [
+    host.strip()
+    for host in os.getenv(
+        'ACCOUNT_ALLOWED_REDIRECT_HOSTS',
+        'quizquestionai.com,www.quizquestionai.com,quizquestion.ai,www.quizquestion.ai'
+    ).split(',')
+    if host.strip()
+]
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
