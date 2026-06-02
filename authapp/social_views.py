@@ -10,6 +10,14 @@ from rest_framework.response import Response
 from rest_framework import status
 from allauth.socialaccount.models import SocialApp
 from django.contrib.sites.models import Site
+
+from django.http import HttpResponseBadRequest, HttpResponseRedirect
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views import View
+from rest_framework_simplejwt.tokens import RefreshToken
+
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -154,3 +162,47 @@ class GoogleLoginRedirectView(OAuth2LoginView):
                 {'detail': str(exc) if settings.DEBUG else 'Google social redirect failed.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+
+class SocialJWTCompleteView(View):
+    """Complete a browser-based (django-allauth) social login and mint JWT tokens.
+
+    Flow:
+      Frontend -> /accounts/google/login/?next=<api>/auth/social/complete/?next=<frontend>/oauth-callback
+      allauth logs in user (session) -> redirects to /auth/social/complete/
+      this view issues SimpleJWT tokens -> redirects to frontend callback with tokens in URL fragment
+
+    Tokens are placed in the URL fragment (#access=...&refresh=...) so they are not sent
+    to the backend as query params on subsequent requests.
+    """
+
+    def get(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return HttpResponseBadRequest("Social login not completed (user not authenticated).")
+
+        next_url = request.GET.get("next") or getattr(settings, "FRONTEND_OAUTH_SUCCESS_URL", "")
+        if not next_url:
+            return HttpResponseBadRequest("Missing next URL.")
+
+        allowed_hosts = set(getattr(settings, "ACCOUNT_ALLOWED_REDIRECT_HOSTS", []) or [])
+        if not url_has_allowed_host_and_scheme(
+            url=next_url,
+            allowed_hosts=allowed_hosts,
+            require_https=not settings.DEBUG,
+        ):
+            return HttpResponseBadRequest("Invalid redirect host.")
+
+        refresh = RefreshToken.for_user(request.user)
+        access_value = str(refresh.access_token)
+        refresh_value = str(refresh)
+
+        parsed = urlparse(next_url)
+        fragment_params = dict(parse_qsl(parsed.fragment, keep_blank_values=True))
+        fragment_params.update({
+            "access": access_value,
+            "refresh": refresh_value,
+            "token_type": "Bearer",
+        })
+
+        final_url = urlunparse(parsed._replace(fragment=urlencode(fragment_params)))
+        return HttpResponseRedirect(final_url)
