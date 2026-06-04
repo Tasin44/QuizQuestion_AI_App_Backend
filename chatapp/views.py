@@ -437,7 +437,16 @@ class AskAPIView(StandardResponseMixin, APIView):
 
         # If only text — use call_chat_ai() as before
         else:
+            past= AskChatHistory.objects.filter(
+                user=request.user
+            ).order_by('created_at').values('prompt','ai_response')[:15]
+
             history = []
+
+            for entry in past:
+                if entry['prompt']:
+                    history.append({"role":"user","content":entry['prompt']})
+                history.append({"role":"assistant","content":entry['ai_response']})
             try:
                 ai_reply = call_chat_ai(subject, history, user_text, model_choice)
             except Exception as e:
