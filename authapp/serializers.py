@@ -1,7 +1,7 @@
 # serializers.py
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from django.core.mail import send_mail
+from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
 import random
@@ -99,8 +99,27 @@ class SignupSerializer(serializers.Serializer):
     '''
     @staticmethod
     def send_otp_email(email, otp_code):
-        subject = "Your Verification Code"
-        message = f"""Dear User,
+        import resend
+
+        resend.api_key = settings.RESEND_API_KEY
+
+        html_body = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto; padding: 24px; border: 1px solid #e0e0e0; border-radius: 8px;">
+            <h2 style="color: #2d2d2d;">Your Verification Code</h2>
+            <p style="color: #555;">Dear User,</p>
+            <p style="color: #555;">Thank you for registering with <strong>Quiz Question AI</strong>.</p>
+            <p style="color: #555;">Your One-Time Password (OTP) for email verification is:</p>
+            <div style="text-align: center; margin: 24px 0;">
+                <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #4f46e5;">{otp_code}</span>
+            </div>
+            <p style="color: #555;">This code is valid for <strong>10 minutes</strong>. Please do not share it with anyone.</p>
+            <p style="color: #555;">If you did not create an account, please ignore this email or contact our support team immediately.</p>
+            <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0;" />
+            <p style="color: #999; font-size: 12px;">Best regards,<br/>The Quiz Question AI Team<br/>support@quizquestionai.com</p>
+        </div>
+        """
+
+        plain_text = f"""Dear User,
 
 Thank you for registering with Quiz Question AI app.
 
@@ -110,12 +129,37 @@ Your One-Time Password (OTP) for email verification is:
 
 This code is valid for 10 minutes. Please do not share it with anyone for security reasons.
 
-If you did not create an account , please ignore this email or contact our support team immediately.
+If you did not create an account, please ignore this email or contact our support team immediately.
 
 Best regards,
-The Quiz Question AI App Team,
-support@smartstudy.com"""
-        send_mail(subject, message, 'noreply@yourdomain.com', [email])
+The Quiz Question AI App Team
+support@quizquestionai.com"""
+
+        import requests
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "from": settings.RESEND_FROM_EMAIL,
+                    "to": [email],
+                    "subject": "Your Verification Code",
+                    "html": html_body,
+                    "text": plain_text,
+                },
+                timeout=5  # 5 seconds timeout to prevent hanging the worker
+            )
+            response.raise_for_status()
+        except Exception as e:
+            logger.error(f"Failed to send OTP email via Resend: {str(e)}")
+            if hasattr(e, 'response') and getattr(e, 'response') is not None:
+                logger.error(f"Resend API response: {e.response.text}")
 
 
 class VerifyOTPSerializer(serializers.Serializer):

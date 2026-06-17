@@ -43,3 +43,4 @@ python-docx
 django-allauth
 dj-rest-auth
 dj-rest-auth[with_social]
+resend

@@ -40,17 +40,38 @@ class TwoFASendOTPView(StandardResponseMixin, APIView):
         OTP.objects.filter(email=email, is_used=False).delete()##❓❓❓why not user=requst.user passed here? how this line working
         OTP.objects.create(email=email, otp_code=otp_code, expires_at=expires_at)
  
-        # Send OTP via email
-        send_mail(
-            subject="Your Two-Factor Authentication Code",
-            message=(
-                f"Your 2FA verification code is: {otp_code}\n"
-                f"This code expires in 10 minutes.\n"
-                f"If you did not request this, please ignore this email."
-            ),
-            from_email='noreply@studyapp.com',
-            recipient_list=[email],
+        # Send OTP via email using Resend
+        from django.conf import settings
+        import requests
+        import logging
+        logger = logging.getLogger(__name__)
+
+        message = (
+            f"Your 2FA verification code is: {otp_code}\n"
+            f"This code expires in 10 minutes.\n"
+            f"If you did not request this, please ignore this email."
         )
+
+        try:
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "from": settings.RESEND_FROM_EMAIL,
+                    "to": [email],
+                    "subject": "Your Two-Factor Authentication Code",
+                    "text": message,
+                },
+                timeout=5
+            )
+            response.raise_for_status()
+        except Exception as e:
+            logger.error(f"Failed to send 2FA OTP via Resend: {str(e)}")
+            if hasattr(e, 'response') and getattr(e, 'response') is not None:
+                logger.error(f"Resend API response: {e.response.text}")
  
         return self.success_response(##❓❓❓ is self contains this success and error response method, how?
             {"email": email},
@@ -195,12 +216,31 @@ class ParentalControlCreateView(StandardResponseMixin, APIView):
             f"Click REJECT to decline:\n{reject_url}\n\n"
             f"If you did not expect this, please ignore this email."
         )
-        send_mail(
-            subject="Parental Control Request",
-            message=body,
-            from_email="noreply@studyapp.com",
-            recipient_list=[related_email],
-        )
+        try:
+            from django.conf import settings
+            import requests
+            import logging
+            logger = logging.getLogger(__name__)
+
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "from": settings.RESEND_FROM_EMAIL,
+                    "to": [related_email],
+                    "subject": "Parental Control Request",
+                    "text": body,
+                },
+                timeout=5
+            )
+            response.raise_for_status()
+        except Exception as e:
+            logger.error(f"Failed to send Parental Control email via Resend: {str(e)}")
+            if hasattr(e, 'response') and getattr(e, 'response') is not None:
+                logger.error(f"Resend API response: {e.response.text}")
 
         return self.success_response(
             {
