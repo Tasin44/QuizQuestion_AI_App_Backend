@@ -286,4 +286,16 @@ class ResetPasswordView(StandardResponseMixin, APIView):
             status_code=400,
             data=serializer.errors
         )
+
+class DeleteAccountView(StandardResponseMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+        user.delete()
+        return self.success_response(
+            {},
+            message="Your account has been deleted successfully.",
+            status_code=200
+        )
     

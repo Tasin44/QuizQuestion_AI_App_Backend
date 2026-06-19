@@ -4,7 +4,7 @@ from drf_yasg.views import get_schema_view
 from rest_framework import permissions
 from .views import (
     SignupView, VerifyOTPView, ResendOTPView, LoginView,
-    LogoutView, ForgotPasswordView, ResetPasswordView
+    LogoutView, ForgotPasswordView, ResetPasswordView, DeleteAccountView
 )
 from .new_views import (
     NewAccessTokenFromRefreshView,
@@ -26,6 +26,7 @@ app_urlpatterns = [
     path('logout/', LogoutView.as_view(), name='logout'),
     path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
+    path('delete-account/', DeleteAccountView.as_view(), name='delete-account'),
     path('social/google/', GoogleLogin.as_view(), name='google-login'),
     path('social/facebook/', FacebookLogin.as_view(), name='facebook-login'),
     path('social/complete/', SocialJWTCompleteView.as_view(), name='social-jwt-complete'),
